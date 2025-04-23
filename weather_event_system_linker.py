@@ -228,33 +228,6 @@ class SystemLinker():
                 f"./plots/{system_id}_weather_events.html",
                 full_html=False, include_plotlyjs="cdn")            
         return
-    
-    def examineTurbinePerformance(self,system_ac_power_data, weather_events):
-        """
-        For wind turbine data, look at the 24 hour period around each extreme
-        weather event, and compare it to non-extreme weather periods.
-        """
-        daily_sum_ac_power = system_ac_power_data.resample('D').sum()
-        pct_median_output_list = list()
-        for idx, row in weather_events.iterrows():
-            extreme_weather_date = row['weather_event_started_on'].date()
-            min_val = daily_sum_ac_power[
-                (daily_sum_ac_power.index.date >= extreme_weather_date) &
-                (daily_sum_ac_power.index.date <=
-                 (extreme_weather_date+ timedelta(days=1)))].min()
-            # Look at the mean for similar dates on different years
-            month_performance_median = daily_sum_ac_power[
-                daily_sum_ac_power.index.month ==
-                extreme_weather_date.month].median()
-            # Look at how the extreme weather performance compares to the
-            # monthly median
-            pct_median_output = min_val / month_performance_median
-            # append extreme weather event to master list
-            row = row.to_dict()
-            row['pct_median_output'] = pct_median_output
-            pct_median_output_list.append(row)
-        agg_df = pd.DataFrame(pct_median_output_list)
-        return agg_df
 
     def examinePVPerformance(self,system_ac_power_data, weather_events):
         """

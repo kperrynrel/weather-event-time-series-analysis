@@ -56,7 +56,6 @@ system_metadata_file = "./metadata/pv_system_metadata.csv"
 LINK_DATA = True
 WRITE_CSV_RESULTS = True
 GENERATE_PLOTS = True
-# 'PV' or 'wind'
 data_type='PV'
 
 if __name__ == "__main__":
@@ -76,40 +75,6 @@ if __name__ == "__main__":
                                               parse_dates=True)
     ##### PLOT GENERATOR (HOOKED INTO S3) ######
     if GENERATE_PLOTS:
-        if data_type=='wind':
-            # Get all of the system information
-            wind_sys = system_weather_event_master[[
-                'NREL_grouping', 'asset_name']].drop_duplicates()
-            master_agg_df = pd.DataFrame()
-            for idx, row in wind_sys.iterrows():
-                # Pull the associated turbine data and plot it.
-                try:
-                    df = pd.read_csv(os.path.join(
-                            "s3://pvdrdb-analysis/REGROW_Wind_Data/SCADA_reformatted/",
-                            str(row['NREL_grouping']) + "_Turbine_" +
-                            str(row['asset_name']) + ".csv"), index_col=0,
-                            storage_options={"key": db.aws['key'],
-                                             "secret": db.aws['secret']})
-                    df.index = pd.to_datetime(df.index, utc=True, )
-                    df.index = df.index.tz_convert('America/Chicago')
-                    df = df[df.index.notnull()]
-                    weather_df_sub = system_weather_event_master[
-                        (system_weather_event_master['asset_name'] ==
-                         row['asset_name']) &
-                        (system_weather_event_master['NREL_grouping'] ==
-                         row['NREL_grouping'])]
-                    # sys_linker.generatePlotlyGraphic(data_type = 'wind',
-                    #                                  system_ac_power_data=df['Power'], 
-                    #                                  weather_events = weather_df_sub,
-                    #                                  ac_power_units= 'kW',
-                    #                                  subsystem_name = row['asset_name'])
-                    # Run the percent deviation from median
-                    agg_df = sys_linker.examineTurbinePerformance(
-                        system_ac_power_data=df['Power'],
-                        weather_events = weather_df_sub)
-                    master_agg_df = pd.concat([master_agg_df, agg_df])
-                except Exception as e:
-                    print(e)
         if data_type == 'PV':
             pv_systems = list(system_weather_event_master[
                 'system_id'].drop_duplicates().astype(int))
