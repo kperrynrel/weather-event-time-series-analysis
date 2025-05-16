@@ -1,0 +1,43 @@
+event_type,weather_event_master
+Extreme Cold/Wind Chill,Cold/Wind Chill
+Cold/Wind Chill,Cold/Wind Chill
+Debris Flow,Debris Flow
+Dust Devil,Dust Devil
+Flood,Flood
+Coastal Flood,Flood
+Flash Flood,Flood
+Frost/Freeze,Frost/Freeze
+Funnel Cloud,Funnel Cloud
+Marine Hail,Hail
+Hail,Hail
+Heat,Heat
+Excessive Heat,Heat
+Heavy Rain,Heavy Rain
+Hurricane,Hurricane
+Marine Hurricane/Typhoon,Hurricane
+Hurricane (Typhoon),Hurricane
+Ice Storm,Ice Storm
+Lightning,Lightning
+Marine Lightning,Lightning
+Sleet,Sleet
+Tornado,Tornado
+Tropical Depression,Tropical Storm
+Marine Tropical Storm,Tropical Storm
+Marine Tropical Depression,Tropical Storm
+Tropical Storm,Tropical Storm
+Tsunami,Tsunami
+Volcanic Ash,Volcanic Ash
+Waterspout,Waterspout
+Wildfire,Wildfire
+Dense Smoke,Wildfire
+Thunderstorm Wind,Wind
+Marine Thunderstorm Wind,Wind
+Marine Strong Wind,Wind
+High Wind,Wind
+Strong Wind,Wind
+Marine High Wind,Wind
+Lake-Effect Snow,Winter Weather
+Winter Storm,Winter Weather
+Winter Weather,Winter Weather
+Blizzard,Winter Weather
+Heavy Snow,Winter Weather

@@ -8,6 +8,9 @@ import plotly.express as px
 from datetime import timedelta
 
 
+sub_event_type_df = pd.read_csv("./master-weather-category.csv")
+
+
 class SystemLinker():
 
     def __init__(self, db, system_metadata, weather_distance_config):
@@ -98,12 +101,11 @@ class SystemLinker():
                     max_deg_distance) &
                    (abs(self.weather_df['end_longitude'] - longitude) <
                     max_deg_distance))]
-            # Check if weather events occur during scada file
+            # Check if weather events occur during time series period
             weather_sub = weather_sub[(pd.to_datetime(
                 weather_sub['start_timestamp']).dt.date >= started_on) &
                 (pd.to_datetime(weather_sub['end_timestamp']).dt.date
                  <= ended_on)]
-
             # Get the min distance to the storm event
             sys_coords = (latitude, longitude)
             weather_sub['distance_to_weather_event_start_km'] = [
@@ -117,9 +119,10 @@ class SystemLinker():
             weather_sub['min_distance_to_weather_event_km'] = weather_sub[[
                 'distance_to_weather_event_start_km',
                 'distance_to_weather_event_end_km']].min(axis=1)
-
             # Remove sites where there are no matching cases
             if len(weather_sub) != 0:
+                # Clean up the weather dataframe to remove any duplicates
+                weather_sub = self.cleanUpWeatherData(weather_sub)
                 # Filter systems within specified distance of weather event
                 for event_type in self.weather_distance_config:
                     within_distance = self.weather_distance_config.get(
@@ -136,14 +139,20 @@ class SystemLinker():
         system_weather_event_master = system_weather_event_master.rename(
             columns={'latitude': 'system_latitude',
                      'longitude': 'system_longitude',
-                     'start_timestamp': 'weather_event_started_on',
-                     'end_timestamp': 'weather_event_ended_on',
                      'started_on': 'system_data_started_on',
                      'ended_on': 'system_data_ended_on',
                      })
-        # Clean up duplicate weather events in the entry (remvoe duplications)
-        system_weather_event_master = self.cleanUpWeatherData(
-            system_weather_event_master)
+        # Get the number of days of data before and after the extreme
+        # weather event in question
+        system_weather_event_master['system_data_days_before_event'] = (
+            pd.to_datetime(system_weather_event_master[
+                'weather_event_started_on']).dt.tz_convert(None)
+            - pd.to_datetime(system_weather_event_master[
+                'system_data_started_on'])).dt.days
+        system_weather_event_master['system_data_days_after_event'] = (
+            pd.to_datetime(system_weather_event_master['system_data_ended_on'])
+            - pd.to_datetime(system_weather_event_master[
+                'weather_event_ended_on']).dt.tz_convert(None)).dt.days
         return system_weather_event_master
 
     def generatePlotlyGraphic(self, data_type,
@@ -207,7 +216,6 @@ class SystemLinker():
                           title=title).update_layout(
                               xaxis_title="Datetime",
                               yaxis_title=f"AC Power ({ac_power_units})")
-        
         # Loop through all of the events and generate the associated vrect's
         # in the plotly graphic
         for idx, row in weather_events.iterrows():
@@ -260,33 +268,57 @@ class SystemLinker():
                 pct_median_output_list.append(row)
         agg_df = pd.DataFrame(pct_median_output_list)
         return agg_df
-    
+
     def cleanUpWeatherData(self, weather_events):
         """
         Clean up the weather event data to prevent duplicates.
         """
+        # Create a master "event" category so we're removing duplicated/similar
+        # categories
+        weather_events = pd.merge(weather_events, sub_event_type_df,
+                                  on='event_type')
         # Filter weather events down to day/type (aggregation). This will help
         # with the number of occurrences
-        weather_events['start_date'] = weather_events['weather_event_started_on'].dt.date
-        weather_events['end_date'] = weather_events['weather_event_ended_on'].dt.date
+        weather_events['start_date'] = weather_events['start_timestamp'].dt.date
+        weather_events['end_date'] = weather_events['end_timestamp'].dt.date
         # Explode list of dates
-        weather_events["dates"] = weather_events.apply(lambda row: pd.date_range(row["start_date"], row["end_date"]), axis=1)
+        weather_events["dates"] = weather_events.apply(lambda row: 
+                                                       pd.date_range(
+                                                           row["start_date"],
+                                                           row["end_date"]),
+                                                       axis=1)
         weather_events_exploded = weather_events.explode("dates")
-        weather_events_sub = weather_events_exploded[['dates', 'event_type']].drop_duplicates()
+        weather_events_sub = weather_events_exploded[['dates',
+                                                      'weather_event_master'
+                                                      ]].drop_duplicates()
         # Sort by type and date
-        weather_events_sub = weather_events_sub.sort_values(["event_type", 'dates'])
+        weather_events_sub = weather_events_sub.sort_values([
+            'weather_event_master', 'dates'])
         # Isolate events over subsequent days
-        weather_events_sub['day_diff'] =  (weather_events_sub['dates'] - weather_events_sub['dates'].shift(1)).dt.days
-        weather_events_sub.loc[weather_events_sub['day_diff'] != 1, 'day_diff'] = 0
-        weather_events_sub['weather_event_idx'] = weather_events_sub['day_diff'].eq(0).cumsum().sub(1)
+        weather_events_sub['day_diff'] =  (weather_events_sub['dates'] -
+                                           weather_events_sub['dates'].shift(1)
+                                           ).dt.days
+        weather_events_sub.loc[weather_events_sub['day_diff'] != 1, 
+                               'day_diff'] = 0
+        weather_events_sub['weather_event_idx'] = weather_events_sub[
+            'day_diff'].eq(0).cumsum().sub(1)
         # Join data back with original dataframe so we can aggregate data
         # up by its associated weather_event_idx
-        weather_events_exploded_new = pd.merge(weather_events_exploded, weather_events_sub, on = ['dates', 'event_type'])
+        weather_events_exploded_new = pd.merge(weather_events_exploded, 
+                                               weather_events_sub, 
+                                               on = ['dates', 'weather_event_master'])
         # Reset the date lengths based on the min and max by index
         weather_events_exploded_new['weather_event_started_on_agg'] = weather_events_exploded_new.groupby(
-            "weather_event_idx")['weather_event_started_on'].transform("min")
+            "weather_event_idx")['start_timestamp'].transform("min")
         weather_events_exploded_new['weather_event_ended_on_agg'] = weather_events_exploded_new.groupby(
-            "weather_event_idx")['weather_event_ended_on'].transform("min")
+            "weather_event_idx")['end_timestamp'].transform("max")
+        # Also take max magnitude and damage levels associated with the storm
+        weather_events_exploded_new['max_magnitude'] = weather_events_exploded_new.groupby(
+            "weather_event_idx")['magnitude'].transform("max")
+        weather_events_exploded_new['max_damage_property'] = weather_events_exploded_new.groupby(
+            "weather_event_idx")['damage_property'].transform("max")
+        weather_events_exploded_new['max_damage_crops'] = weather_events_exploded_new.groupby(
+            "weather_event_idx")['damage_crops'].transform("max")                
         # Take the nearest distance value for each weather index
         weather_events_exploded_new['nearest_distance'] = weather_events_exploded_new.groupby(
             "weather_event_idx")['min_distance_to_weather_event_km'].transform("min")        
@@ -296,26 +328,27 @@ class SystemLinker():
         # Take first occurance of weather event index        
         weather_events_exploded_new.drop_duplicates(
             subset='weather_event_idx', keep='first', inplace=True)
-        weather_events_exploded_new['weather_event_started_on'] = weather_events_exploded_new['weather_event_started_on_agg']          
-        weather_events_exploded_new['weather_event_ended_on'] = weather_events_exploded_new['weather_event_ended_on_agg']   
+        # Update the columns based on the aggregated storm values
+        weather_events_exploded_new['weather_event_started_on'] = \
+            weather_events_exploded_new['weather_event_started_on_agg']          
+        weather_events_exploded_new['weather_event_ended_on'] = \
+            weather_events_exploded_new['weather_event_ended_on_agg']
+        weather_events_exploded_new['magnitude'] = \
+            weather_events_exploded_new['max_magnitude']            
+        weather_events_exploded_new['damage_property'] = \
+            weather_events_exploded_new['max_damage_property']
+        weather_events_exploded_new['damage_crops'] = \
+            weather_events_exploded_new['max_damage_crops']
+        # Clean up the data frame
         weather_events_exploded_new = weather_events_exploded_new[[
-               'weather_event_id', 'weather_event_started_on',
-               'weather_event_ended_on', 'state', 'location', 'event_type',
-               'begin_latitude', 'begin_longitude', 'end_latitude', 'end_longitude',
-               'magnitude', 'magnitude_type', 'damage_property', 'damage_crops',
-               'episode_narrative', 'comments', 'distance_to_weather_event_start_km',
-               'distance_to_weather_event_end_km', 'min_distance_to_weather_event_km',
-               'system_id', 'system_latitude', 'system_longitude', 'grouping', 'power',
-               'system_data_started_on', 'system_data_ended_on']]
-        # Get the number of days of data before and after the extreme
-        # weather event in question
-        weather_events_exploded_new['system_data_days_before_event'] = (
-            pd.to_datetime(weather_events_exploded_new[
-                'weather_event_started_on']).dt.tz_convert(None)
-            - pd.to_datetime(weather_events_exploded_new[
-                'system_data_started_on'])).dt.days
-        weather_events_exploded_new['system_data_days_after_event'] = (
-            pd.to_datetime(weather_events_exploded_new['system_data_ended_on'])
-            - pd.to_datetime(weather_events_exploded_new[
-                'weather_event_ended_on']).dt.tz_convert(None)).dt.days
+               'weather_event_id', 'state',
+               'location', 'event_type', 'begin_latitude', 'begin_longitude',
+               'end_latitude', 'end_longitude', 
+               'weather_event_started_on', 'weather_event_ended_on',
+               'magnitude', 'magnitude_type',
+               'damage_property', 'damage_crops', 'episode_narrative', 
+               'comments', 'distance_to_weather_event_start_km',
+               'distance_to_weather_event_end_km',
+               'min_distance_to_weather_event_km',
+               'weather_event_master']]
         return weather_events_exploded_new

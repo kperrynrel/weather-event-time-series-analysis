@@ -1,3 +1,10 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Fri May 16 09:55:04 2025
+
+@author: kperry
+"""
+
 import pandas as pd
 import plotly.express as px
 import weather_event_system_linker as we
@@ -107,4 +114,3 @@ if __name__ == "__main__":
                 except:
                     logger_issue.append(system_id)
                     
-            
